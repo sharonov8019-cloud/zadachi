@@ -537,6 +537,45 @@ let refine = {project:null,label:null};
 let expandedIds = new Set();
 
 function uid(){return Math.random().toString(36).slice(2,10)}
+// ---------- метки: одна метка, как её ни напиши ----------
+// «сгла», «СГЛА», «сглв» → @СГЛА. Сравниваем без регистра, ё=е, без пробелов/дефисов;
+// опечатка допускается: 1 символ у меток от 4 букв, 2 — от 7 букв. Короткие (жду, дом) — только точное.
+function labelKey(l){return String(l).toLowerCase().replace(/ё/g,'е').replace(/[\s_\-]+/g,'')}
+function lev(a,b){
+  const m=a.length,n=b.length;if(Math.abs(m-n)>2)return 99;
+  let prev=Array.from({length:n+1},(_,j)=>j);
+  for(let i=1;i<=m;i++){const cur=[i];for(let j=1;j<=n;j++)cur[j]=Math.min(prev[j]+1,cur[j-1]+1,prev[j-1]+(a[i-1]===b[j-1]?0:1));prev=cur}
+  return prev[n];
+}
+function labelTol(n){return n>=7?2:n>=4?1:0}
+function canonLabel(l,known){
+  const k=labelKey(l);let best=null,bd=99;
+  for(const c of known){
+    const ck=labelKey(c);if(ck===k)return c;
+    const d=lev(k,ck);if(d<=labelTol(Math.min(k.length,ck.length))&&d<bd){bd=d;best=c}
+  }
+  return best||l;
+}
+function allLabels(){return [...new Set(state.tasks.flatMap(t=>t.labels||[]))]}
+// приводим список меток задачи к уже существующим; о замене говорим тостом
+function canonLabels(arr){
+  const known=allLabels(),out=[],fixed=[];
+  (arr||[]).map(x=>String(x).trim().replace(/^@/,'')).filter(Boolean).forEach(l=>{
+    const c=canonLabel(l,known.concat(out));
+    if(c!==l&&labelKey(c)!==labelKey(l))fixed.push('«'+l+'» → @'+c);
+    if(!out.includes(c))out.push(c);
+  });
+  if(fixed.length)setTimeout(()=>toast('Метка '+fixed.join(', ')),50);
+  return out;
+}
+// разовая склейка дублей в сохранённых данных: самая частая форма метки становится основной
+function mergeDuplicateLabels(s){
+  const cnt={};s.tasks.forEach(t=>t.labels.forEach(l=>cnt[l]=(cnt[l]||0)+1));
+  const order=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]||(/[A-ZА-ЯЁ]/.test(b[0])-/[A-ZА-ЯЁ]/.test(a[0])));
+  const canon=[],map={};
+  order.forEach(l=>{const c=canonLabel(l,canon);if(c===l)canon.push(l);map[l]=c});
+  s.tasks.forEach(t=>{t.labels=[...new Set(t.labels.map(l=>map[l]||l))]});
+}
 function normalize(s){
   s.projects=s.projects&&s.projects.length?s.projects:DEFAULT_PROJECTS.slice();
   s.theme=s.theme||'light';
@@ -557,6 +596,7 @@ function normalize(s){
     });
     seq.forEach((t,i)=>{if(typeof t.order!=='number')t.order=i});
   }
+  mergeDuplicateLabels(s);
   return s;
 }
 function load(){
@@ -969,6 +1009,7 @@ function createTask(p){
   if(refine.label&&!(p.labels||[]).includes(refine.label))p.labels=[...(p.labels||[]),refine.label];
   const maxOrder=state.tasks.reduce((m,x)=>Math.max(m,x.order||0),0);
   const due0=p.due||(p.repeat?todayStr():null);
+  p.labels=canonLabels(p.labels);
   state.tasks.push({id:uid(),title:p.title,project:p.project||'Входящие',priority:p.priority||4,due:due0,repeatAnchor:p.repeat?due0:null,dueTime:p.dueTime||null,labels:p.labels||[],note:p.note||'',done:false,created:Date.now(),repeat:p.repeat||null,repeatN:p.repeatN||null,subtasks:Array.isArray(p.subtasks)?p.subtasks:[],order:maxOrder+1});
   save();render();
 }
@@ -1087,7 +1128,7 @@ ${state.keywordsText||''}
 Инструкции:
 - title: перепиши задачу в короткую, понятную повелительную форму (напр. «панели сайт правки» → «Внести правки на сайт»). Без даты/времени внутри title.
 - project: ровно один из доступных проектов; если не ясно — «Входящие».
-- labels: массив строк без «@»; добавляй клиента по правилам выше.
+- labels: массив строк без «@»; добавляй клиента по правилам выше. Уже существующие метки: ${allLabels().join(', ')||'нет'} — если по смыслу подходит существующая, пиши её точно так же (регистр, написание), не создавай вариантов.
 - due: дата YYYY-MM-DD или null (учитывай «завтра», «послезавтра», «через N дней», дни недели, «на выходных», «8 июня»).
 - dueTime: «HH:MM» или null («до конца дня»→18:00, «утром»→09:00, «в обед»→13:00, «вечером»→19:00).
 - priority: 1 (срочно/важно) .. 4 (обычное), по умолчанию 4.
@@ -1217,7 +1258,7 @@ function saveModal(){
   if(newDue!==t.due)delete t.stuckSince;
   t.due=newDue;
   t.dueTime=document.getElementById('m-time').value||null;
-  t.labels=document.getElementById('m-labels').value.split(',').map(s=>s.trim()).filter(Boolean);
+  t.labels=canonLabels(document.getElementById('m-labels').value.split(','));
   t.repeat=document.getElementById('m-repeat').value||null;
   t.repeatN=t.repeat==='everyN'?Math.max(1,+document.getElementById('m-repeatn').value||1):null;
   t.note=document.getElementById('m-note').value.trim();
@@ -1560,7 +1601,7 @@ function applyActions(actions){
       const t=state.tasks.find(x=>x.id===a.id);if(t&&a.changes){const c=a.changes;
         if('title'in c&&c.title)t.title=String(c.title);
         if('project'in c&&state.projects.includes(c.project))t.project=c.project;
-        if('labels'in c&&Array.isArray(c.labels))t.labels=c.labels.map(s=>String(s).replace(/^@/,''));
+        if('labels'in c&&Array.isArray(c.labels))t.labels=canonLabels(c.labels);
         if('due'in c)t.due=(typeof c.due==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(c.due))?c.due:null;
         if('dueTime'in c)t.dueTime=(typeof c.dueTime==='string'&&/^\d{2}:\d{2}$/.test(c.dueTime))?c.dueTime:null;
         if('priority'in c&&[1,2,3,4].includes(+c.priority))t.priority=+c.priority;
