@@ -454,6 +454,14 @@ const EXTRA_COLORS=['#e8590c','#2b8a3e','#5f3dc4','#c2255c','#1971c2','#0c8599',
 function projColor(p){if(PROJ_COLOR[p])return PROJ_COLOR[p];let h=0;for(const c of String(p))h=(h*31+c.charCodeAt(0))>>>0;return EXTRA_COLORS[h%EXTRA_COLORS.length]}
 const PROJ_COLOR = {'Входящие':'#808080','Личное':'#246fe0','СГЛА':'#eb8909','СтартФит':'#299438','Бриллионс':'#af38eb','EFRecords':'#e05194','Юнитех':'#0aa5b5','Внутр':'#d4263f'};
 const DEFAULT_PROJECTS = ['Входящие','Личное','СГЛА','СтартФит','Бриллионс','EFRecords','Юнитех','Внутр'];
+const WD_PLURAL=['воскресеньям','понедельникам','вторникам','средам','четвергам','пятницам','субботам'];
+function repeatLabel(t){
+  const a=new Date(repeatAnchor(t)+'T00:00:00');
+  if(t.repeat==='weekly')return 'по '+WD_PLURAL[a.getDay()];
+  if(t.repeat==='monthly')return 'каждое '+a.getDate()+'-е';
+  if(t.repeat==='everyN')return 'каждые '+(t.repeatN||1)+' дн.';
+  return REPEAT_LABEL[t.repeat]||'';
+}
 const REPEAT_LABEL = {daily:'каждый день',weekdays:'по будням',weekly:'каждую неделю',monthly:'каждый месяц'};
 const DEFAULT_KEYWORDS = `сгла = СГЛА
 стартфит, startfit = СтартФит
@@ -615,20 +623,32 @@ function parseRepeat(words,i){
     return{repeat:'everyN',n:+next,skip};
   }
   if(w==='по'&&next.startsWith('будн'))return{repeat:'weekdays',skip:2};
+  // день недели: «каждый понедельник», «каждую среду», «по пятницам»
+  const WD_STEMS=['воскрес','понедельник','вторник','сред','четверг','пятниц','суббот'];
+  if(w==='каждый'||w==='каждую'||w==='каждое'||w==='по'){
+    const wd=WD_STEMS.findIndex(st=>next.startsWith(st));
+    if(wd>=0)return{repeat:'weekly',wd,skip:2};
+  }
   return null;
 }
-function nextDue(due,repeat,n){
-  let d=new Date((due||todayStr())+'T00:00:00');
-  const t0=todayStr();
-  const step=()=>{
-    if(repeat==='weekly')d.setDate(d.getDate()+7);
-    else if(repeat==='monthly')d.setMonth(d.getMonth()+1);
-    else if(repeat==='weekdays'){do{d.setDate(d.getDate()+1)}while(d.getDay()===0||d.getDay()===6)}
-    else if(repeat==='everyN')d.setDate(d.getDate()+Math.max(1,n||1));
-    else d.setDate(d.getDate()+1);
-  };
-  let guard=0;
-  do{step();guard++}while(iso(d)<=t0&&guard<400);
+// Следующее появление повторяющейся задачи — строго по расписанию: «по понедельникам» остаётся
+// понедельником, даже если отчёт сделан во вторник. Опорная дата — t.repeatAnchor (первый раз).
+function repeatAnchor(t){return t.repeatAnchor||t.stuckSince||t.due||todayStr()}
+function nextOccurrence(t){
+  const t0=todayStr(),a=new Date(repeatAnchor(t)+'T00:00:00');
+  const d=new Date(t0+'T00:00:00');d.setDate(d.getDate()+1); // ищем начиная с завтра
+  for(let g=0;g<800;g++,d.setDate(d.getDate()+1)){
+    const dow=d.getDay();
+    if(t.repeat==='daily')return iso(d);
+    if(t.repeat==='weekdays'){if(dow!==0&&dow!==6)return iso(d);continue}
+    if(t.repeat==='weekly'){if(dow===a.getDay())return iso(d);continue}
+    if(t.repeat==='monthly'){
+      // 31-е в коротком месяце → последний день месяца
+      const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+      if(d.getDate()===Math.min(a.getDate(),last))return iso(d);continue}
+    if(t.repeat==='everyN'){const n=Math.max(1,t.repeatN||1);const diff=Math.round((d-a)/864e5);if(diff>=0&&diff%n===0)return iso(d);continue}
+    return iso(d);
+  }
   return iso(d);
 }
 
@@ -687,7 +707,11 @@ function parseQuickAdd(text){
     const md=parseMonthDate(words,i);
     if(md){due=md.due;i+=md.skip-1;continue}
     const rp=parseRepeat(words,i);
-    if(rp){repeat=rp.repeat;repeatN=rp.n||null;i+=rp.skip-1;continue}
+    if(rp){
+      repeat=rp.repeat;repeatN=rp.n||null;i+=rp.skip-1;
+      // первый раз — ближайший такой день недели (сегодня, если сегодня он и есть)
+      if(rp.wd!==undefined&&!due){const d=new Date();d.setDate(d.getDate()+((rp.wd-d.getDay()+7)%7));due=iso(d)}
+      continue}
     if(w[0]==='#'){project=w.slice(1);continue}
     if(w[0]==='@'){labels.push(w.slice(1));continue}
     if(/^p[1-4]$/i.test(w)){priority=+w[1];continue}
@@ -876,13 +900,18 @@ function renderMain(){
     html+=cardsHTML(tasks);
   } else if(view.type==='all'){
     // «Без даты» сверху, дальше по дням
-    const groups={};
-    tasks.forEach(t=>{(groups[t.due||'']=groups[t.due||'']||[]).push(t)});
+    const groups={},t0=todayStr();
+    const later=tasks.filter(t=>t.repeat&&t.due>t0);
+    tasks.filter(t=>!later.includes(t)).forEach(t=>{(groups[t.due||'']=groups[t.due||'']||[]).push(t)});
     Object.keys(groups).sort((a,b)=>!a?-1:!b?1:a<b?-1:1).forEach(d=>{
       const lbl=!d?'Без даты':(relDay(d)?relDay(d)+', ':'')+fmtDateFull(d);
       html+=`<div class="date-group${d&&d<=todayStr()?' today':''}" ${d?`data-drop-date="${d}"`:''}>${lbl}${d&&d<todayStr()?' · просрочено':''}</div>`;
       html+=cardsHTML(groups[d]);
     });
+    if(later.length){
+      html+=`<div class="date-group">🔁 Повторяющиеся — появятся в свой день</div>`;
+      html+=cardsHTML(later);
+    }
   } else {
     html+=cardsHTML(tasks);
   }
@@ -893,7 +922,7 @@ function taskHTML(t){
   const overdue=t.due&&t.due<t0;
   const due=t.due?`<span class="chip due ${overdue?'overdue':t.due===t0?'today':''}">📅 ${fmtDate(t.due)}</span>`:'';
   const time=t.dueTime?`<span class="chip time">🕘 ${t.dueTime}</span>`:'';
-  const repLabel=t.repeat==='everyN'?`каждые ${t.repeatN||1} дн.`:(REPEAT_LABEL[t.repeat]||'');
+  const repLabel=repeatLabel(t);
   const repeat=t.repeat?`<span class="chip repeat">🔁 ${repLabel}</span>`:'';
   const projTag=`<span class="card-proj"><span class="dot"></span>${esc(t.project)}</span>`;
   const labels=t.labels.map(l=>`<span class="label-chip">@${l}</span>`).join('');
@@ -943,7 +972,8 @@ function createTask(p){
   if(!p||!p.title)return;
   if(!p.due&&view.type==='today')p.due=viewDay();
   const maxOrder=state.tasks.reduce((m,x)=>Math.max(m,x.order||0),0);
-  state.tasks.push({id:uid(),title:p.title,project:p.project||'Входящие',priority:p.priority||4,due:p.due||(p.repeat?todayStr():null),dueTime:p.dueTime||null,labels:p.labels||[],note:p.note||'',done:false,created:Date.now(),repeat:p.repeat||null,repeatN:p.repeatN||null,subtasks:Array.isArray(p.subtasks)?p.subtasks:[],order:maxOrder+1});
+  const due0=p.due||(p.repeat?todayStr():null);
+  state.tasks.push({id:uid(),title:p.title,project:p.project||'Входящие',priority:p.priority||4,due:due0,repeatAnchor:p.repeat?due0:null,dueTime:p.dueTime||null,labels:p.labels||[],note:p.note||'',done:false,created:Date.now(),repeat:p.repeat||null,repeatN:p.repeatN||null,subtasks:Array.isArray(p.subtasks)?p.subtasks:[],order:maxOrder+1});
   save();render();
 }
 function addTask(text){ if(!text.trim())return; createTask(parseQuickAdd(text)); }
@@ -1066,6 +1096,7 @@ ${state.keywordsText||''}
 - dueTime: «HH:MM» или null («до конца дня»→18:00, «утром»→09:00, «в обед»→13:00, «вечером»→19:00).
 - priority: 1 (срочно/важно) .. 4 (обычное), по умолчанию 4.
 - repeat: null|daily|weekdays|weekly|monthly|everyN; repeatN: число для everyN иначе null.
+- «каждый понедельник», «по понедельникам», «каждую среду» → repeat=weekly и due = ближайший такой день (сегодня, если сегодня он). «Каждый день»/«ежедневно» → daily, due = сегодня. «Каждое 5 число» → monthly, due = ближайшее 5-е.
 Верни ТОЛЬКО JSON с полями: title, project, labels, due, dueTime, priority, repeat, repeatN.`;
   let j;
   aiLastError=null;
@@ -1115,12 +1146,15 @@ function toggleDone(id){
   const t=state.tasks.find(x=>x.id===id);if(!t)return;
   if(!t.done&&t.repeat){
     // recurring: reschedule to next occurrence instead of completing
-    t.due=nextDue(t.due,t.repeat,t.repeatN);
+    if(!t.repeatAnchor)t.repeatAnchor=repeatAnchor(t);
+    t.due=nextOccurrence(t);
+    t.lastDone=todayStr();
     delete t.stuckSince;
     (t.subtasks||[]).forEach(s=>s.done=false);
     save();
     const el=document.querySelector(`.task[data-id="${id}"]`);
     if(el){el.style.opacity=.3;setTimeout(render,200)}else render();
+    toast('Готово. Следующий раз — '+fmtDateFull(t.due));
     return;
   }
   t.done=!t.done;save();
@@ -1183,7 +1217,7 @@ function saveModal(){
   t.title=document.getElementById('m-title').value.trim()||t.title;
   t.project=document.getElementById('m-project').value;
   t.priority=+document.getElementById('m-priority').value;
-  const newDue=document.getElementById('m-due').value||null;
+  const newDue=document.getElementById('m-due').value||null,oldDue=t.due,oldRepeat=t.repeat;
   if(newDue!==t.due)delete t.stuckSince;
   t.due=newDue;
   t.dueTime=document.getElementById('m-time').value||null;
@@ -1192,6 +1226,9 @@ function saveModal(){
   t.repeatN=t.repeat==='everyN'?Math.max(1,+document.getElementById('m-repeatn').value||1):null;
   t.note=document.getElementById('m-note').value.trim();
   if(t.repeat&&!t.due)t.due=todayStr();
+  // поменял дату или правило повтора — расписание считаем от новой даты
+  if(t.repeat&&(newDue!==oldDue||t.repeat!==oldRepeat||!t.repeatAnchor))t.repeatAnchor=t.due;
+  if(!t.repeat)delete t.repeatAnchor;
   t.subtasks=editSubs.map(s=>({...s,title:s.title.trim()})).filter(s=>s.title);
   save();closeModal();render();
 }
