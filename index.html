@@ -88,7 +88,7 @@
   /* Modal */
   #overlay{position:fixed;inset:0;background:rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;z-index:50}
   #overlay.show{display:flex}
-  #modal{background:#fff;border-radius:12px;width:420px;max-width:92vw;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
+  #modal{background:#fff;border-radius:12px;width:420px;max-width:92vw;max-height:92vh;overflow-y:auto;padding:22px;box-shadow:0 10px 40px rgba(0,0,0,.2)}
   #modal h3{font-size:16px;margin-bottom:16px}
   #modal label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;font-weight:600}
   #modal input,#modal select{width:100%;border:1px solid #ddd;border-radius:7px;padding:9px 11px;font-size:14px;outline:none}
@@ -229,6 +229,11 @@
   .sub-edit-row input{flex:1}
   .sub-edit-row button{background:none;border:none;color:#bbb;cursor:pointer;font-size:16px;padding:2px 6px}
   .sub-edit-row button:hover{color:var(--red)}
+  .sub-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+  #m-sub-ai{background:#f3efff;color:#6741d9;border:none;border-radius:7px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;margin-bottom:4px;white-space:nowrap}
+  #m-sub-ai:hover{background:#e9e1ff}
+  #m-sub-ai:disabled{opacity:.6;cursor:wait}
+  body.dark #m-sub-ai{background:#2c2440;color:#b6a0e6}
   #m-sub-add{background:none;border:1px dashed #ccc;color:var(--muted);border-radius:7px;padding:7px;width:100%;cursor:pointer;font-size:13px;margin-top:2px}
   #m-sub-add:hover{border-color:var(--accent);color:var(--accent)}
   body.dark #m-sub-add{border-color:#444}
@@ -405,7 +410,7 @@
     </div>
     <label>Комментарий</label>
     <textarea id="m-note" rows="2" placeholder="Необязательно"></textarea>
-    <label>Подзадачи</label>
+    <div class="sub-head"><label>Подзадачи</label><button id="m-sub-ai" type="button" title="ИИ распишет задачу на шаги — их можно поправить">✨ ИИ предложит</button></div>
     <div id="m-subs"></div>
     <button id="m-sub-add" type="button">+ подзадача</button>
     <div class="modal-actions">
@@ -1306,6 +1311,39 @@ document.getElementById('theme-toggle').onclick=()=>{state.theme=state.theme==='
 document.getElementById('m-save').onclick=saveModal;
 document.getElementById('m-cancel').onclick=closeModal;
 document.getElementById('m-del').onclick=()=>{delTask(editingId);closeModal()};
+// ✨ ИИ расписывает задачу на шаги. Предложенное попадает в обычный редактор подзадач —
+// там его можно переписать, переставить или удалить; сохраняется только по «Сохранить».
+async function suggestSubtasks(){
+  const btn=document.getElementById('m-sub-ai');
+  if(!GEMINI_KEY){toast('Нужен ключ ИИ: 🔑 «Ключ ИИ» в левом меню');return}
+  const forId=editingId;
+  const title=document.getElementById('m-title').value.trim();
+  if(!title){toast('Сначала напиши название задачи');return}
+  const note=document.getElementById('m-note').value.trim();
+  const project=document.getElementById('m-project').value;
+  const have=editSubs.map(x=>x.title.trim()).filter(Boolean);
+  const sys=`Ты помогаешь Никите — специалисту по контекстной рекламе (Яндекс Директ), который ведёт клиентов как агентство.
+Разбей задачу на 3–8 конкретных шагов-подзадач в том порядке, в каком их делают.
+Каждый шаг — короткое действие с глагола (до 60 символов), без нумерации и точек в конце.
+${have.length?'Эти подзадачи уже есть, не повторяй их, а дополни недостающим: '+have.join('; ')+'.':''}
+Верни ТОЛЬКО JSON: {"subtasks":["...","..."]}`;
+  const user=`Задача: ${title}
+Проект: ${project}${note?'\nКомментарий: '+note:''}`;
+  const lab=btn.textContent;btn.textContent='✨ Думаю…';btn.disabled=true;
+  try{
+    const j=await geminiGenerate({systemInstruction:{parts:[{text:sys}]},contents:[{role:'user',parts:[{text:user}]}],generationConfig:{responseMimeType:'application/json'}},{budget:30000});
+    const txt=j?.candidates?.[0]?.content?.parts?.[0]?.text||'';
+    let list=[];try{list=JSON.parse(txt).subtasks||[]}catch(_){}
+    list=list.map(x=>String(x).trim()).filter(x=>x&&!have.some(h=>h.toLowerCase()===x.toLowerCase()));
+    if(editingId!==forId)return; // окно закрыли или открыли другую задачу
+    if(!list.length){toast('ИИ ничего не предложил, попробуй уточнить название');return}
+    editSubs=editSubs.filter(x=>x.title.trim()).concat(list.map(t=>({id:uid(),title:t,done:false})));
+    renderSubEditor();
+    toast('Добавлено шагов: '+list.length+' — поправь, если нужно');
+  }catch(e){toast(aiReason(e)||'ИИ не ответил')}
+  finally{btn.textContent=lab;btn.disabled=false}
+}
+document.getElementById('m-sub-ai').onclick=suggestSubtasks;
 document.getElementById('m-sub-add').onclick=()=>{editSubs.push({id:uid(),title:'',done:false});renderSubEditor();const ins=document.querySelectorAll('#m-subs input');if(ins.length)ins[ins.length-1].focus()};
 document.getElementById('m-subs').addEventListener('input',e=>{const i=e.target.dataset.subi;if(i!==undefined)editSubs[+i].title=e.target.value});
 document.getElementById('m-subs').addEventListener('click',e=>{
