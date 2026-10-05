@@ -107,10 +107,7 @@
   /* Refine bar */
   .refine-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 16px}
   #refine:empty{display:none}
-  .filter-pill{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--pc,#4a58c8);background:color-mix(in srgb,var(--pc,#4a58c8) 12%,transparent);border-radius:20px;padding:5px 6px 5px 11px}
-  .filter-pill .dot{width:8px;height:8px;border-radius:50%;background:var(--pc)}
-  .filter-pill button{background:none;border:none;color:inherit;font-size:16px;line-height:1;cursor:pointer;width:22px;height:22px;border-radius:50%}
-  .filter-pill button:hover{background:color-mix(in srgb,var(--pc,#4a58c8) 20%,transparent)}
+  .title-dot{width:14px;height:14px;border-radius:50%;flex:none}
   .nav-item.filter-on{background:color-mix(in srgb,var(--pc,#4a58c8) 13%,transparent);font-weight:600}
 
   /* Overdue carryover bar */
@@ -795,15 +792,10 @@ function render(){
   renderRefine();
   renderMain();
 }
-// Фильтр по проекту и метке включается в левом меню и действует на любой экран.
-// Пока он включён, над задачами висят плашки «● СГЛА ×» / «@жду ×».
-function renderRefine(){
-  document.getElementById('refine').innerHTML=
-    (refine.project?`<span class="filter-pill" style="--pc:${projColor(refine.project)}"><span class="dot"></span>${esc(refine.project)}<button data-unfilter="project" title="Снять фильтр">×</button></span>`:'')+
-    (refine.label?`<span class="filter-pill"><span>@${esc(refine.label)}</span><button data-unfilter="label" title="Снять фильтр">×</button></span>`:'');
-}
+function renderRefine(){document.getElementById('refine').innerHTML=''}
 function navItem(type,value,label,icon,dotColor,dropAttr,extra){
-  const active=type==='project'?refine.project===value:view.type===type&&(type==='today'||(view.value||null)===(value||null));
+  const filtered=refine.project||refine.label;
+  const active=type==='project'?refine.project===value:view.type===type&&!(type==='all'&&filtered)&&(type==='today'||(view.value||null)===(value||null));
   let count='';
   const saved={type,value};
   const tmp=view; view=saved; const n=getViewTasks(true).length; view=tmp;
@@ -888,7 +880,9 @@ function renderMain(){
       (isToday?'':`<button class="day-today" data-day-today>Сегодня</button>`);
     sub.textContent=[relDay(d),tasksWord(tasks.length)].filter(Boolean).join(' · ');
   } else {
-    document.getElementById('view-title').innerHTML=`${meta.ic} ${meta.t}`;
+    document.getElementById('view-title').innerHTML=
+      view.type==='all'&&refine.project?`<span class="title-dot" style="background:${projColor(refine.project)}"></span>${esc(refine.project)}`:
+      view.type==='all'&&refine.label?`@${esc(refine.label)}`:`${meta.ic} ${meta.t}`;
     sub.textContent=tasksWord(tasks.length);
   }
 
@@ -971,6 +965,8 @@ function toast(msg,action){
 function createTask(p){
   if(!p||!p.title)return;
   if(!p.due&&view.type==='today')p.due=viewDay();
+  if(refine.project&&(!p.project||p.project==='Входящие'))p.project=refine.project;
+  if(refine.label&&!(p.labels||[]).includes(refine.label))p.labels=[...(p.labels||[]),refine.label];
   const maxOrder=state.tasks.reduce((m,x)=>Math.max(m,x.order||0),0);
   const due0=p.due||(p.repeat?todayStr():null);
   state.tasks.push({id:uid(),title:p.title,project:p.project||'Входящие',priority:p.priority||4,due:due0,repeatAnchor:p.repeat?due0:null,dueTime:p.dueTime||null,labels:p.labels||[],note:p.note||'',done:false,created:Date.now(),repeat:p.repeat||null,repeatN:p.repeatN||null,subtasks:Array.isArray(p.subtasks)?p.subtasks:[],order:maxOrder+1});
@@ -1249,8 +1245,6 @@ document.getElementById('qa-input').addEventListener('keydown',e=>{if(e.key==='E
 document.addEventListener('click',e=>{
   const stb=e.target.closest('[data-stuck]');
   if(stb){e.stopPropagation();const[id,act]=stb.dataset.stuck.split('|');stuckAction(id,act);return}
-  const unf=e.target.closest('[data-unfilter]');
-  if(unf){refine[unf.dataset.unfilter]=null;render();return}
   const shift=e.target.closest('[data-day-shift]');
   if(shift){const d=addDaysStr(viewDay(),+shift.dataset.dayShift);view={type:'today',value:d===todayStr()?undefined:d};render();return}
   if(e.target.closest('[data-day-today]')){view={type:'today'};render();return}
@@ -1268,8 +1262,10 @@ document.addEventListener('click',e=>{
   const nav=e.target.closest('.nav-item');
   if(nav){
     const ty=nav.dataset.type,v=nav.dataset.value;
-    // проект и метка — фильтр поверх открытого экрана; повторный клик снимает
-    if(ty==='project'||ty==='label'){refine[ty]=refine[ty]===v?null:v;render();return}
+    // проект/метка — все задачи этого проекта (метки) по дням;
+    // Сегодня / Все задачи / Выполненные — без фильтра
+    refine={project:null,label:null};
+    if(ty==='project'||ty==='label'){refine[ty]=v;view={type:'all'};render();return}
     view={type:ty,value:v};render();return
   }
   const subt=e.target.closest('[data-subcheck]');
