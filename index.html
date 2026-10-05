@@ -26,7 +26,8 @@
   .nav-item .ic{width:18px;text-align:center;font-size:15px}
   .nav-item .count{margin-left:auto;font-size:12px;color:var(--muted)}
   .proj-menu{margin-left:auto;background:none;border:none;color:#bbb;cursor:pointer;font-size:16px;line-height:1;padding:0 5px;border-radius:5px;opacity:0;flex:none}
-  .nav-item .count + .proj-menu{margin-left:6px}
+  .nav-item .count + .proj-menu,.proj-menu + .proj-menu{margin-left:2px}
+  .proj-menu.proj-del:hover{background:#fdeceb;color:var(--red)}
   .nav-item:hover .proj-menu{opacity:1}
   .proj-menu:hover{background:rgba(128,128,128,.2);color:var(--text)}
   body.dark .proj-menu{color:#888}
@@ -121,6 +122,9 @@
   /* Toast */
   #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(18px);background:#333;color:#fff;padding:11px 18px;border-radius:9px;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:80;max-width:90vw;text-align:center}
   #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.has-action.show{pointer-events:auto}
+  #toast button{margin-left:12px;background:none;border:none;color:#ffb4a8;font-weight:700;font-size:13px;cursor:pointer;padding:0}
+  body.dark #toast button{color:var(--red)}
   body.dark #toast{background:#e6e6e6;color:#1a1a1a}
 
   /* Dark theme */
@@ -717,29 +721,32 @@ function addProject(){
   view={type:'project',value:name};refine={project:null,label:null};
   save();render();toast('Проект «'+name+'» создан');
 }
-function projectMenu(name){
-  if(name==='Входящие'){alert('«Входящие» — системный проект, его нельзя изменить или удалить.');return;}
-  const nv=prompt('Название проекта.\n• Измени текст и нажми ОК — переименовать.\n• Очисти поле и нажми ОК — удалить проект.',name);
+function deleteProject(name){
+  const cnt=state.tasks.filter(t=>!t.done&&t.project===name).length;
+  if(!confirm('Удалить проект «'+name+'»?'+(cnt?'\n\nАктивных задач в нём: '+cnt+'. Они перейдут во «Входящие».':'')))return;
+  state.tasks.forEach(t=>{if(t.project===name)t.project='Входящие';});
+  state.projects=state.projects.filter(p=>p!==name);
+  if(view.type==='project'&&view.value===name)view={type:'today'};
+  if(refine.project===name)refine.project=null;
+  save();render();toast('Проект «'+name+'» удалён');
+}
+// Метка удаляется сразу, без подтверждения; вернуть можно кнопкой в уведомлении
+function deleteLabel(l){
+  const had=state.tasks.filter(t=>t.labels.includes(l)).map(t=>t.id);
+  state.tasks.forEach(t=>{t.labels=t.labels.filter(x=>x!==l)});
+  if(view.type==='label'&&view.value===l)view={type:'today'};
+  if(refine.label===l)refine.label=null;
+  save();render();
+  toast('Метка @'+l+' удалена',{label:'Отменить',fn:()=>{
+    state.tasks.forEach(t=>{if(had.includes(t.id)&&!t.labels.includes(l))t.labels.push(l)});
+    save();render();
+  }});
+}
+function renameProject(name){
+  const nv=prompt('Новое название проекта:',name);
   if(nv===null)return;
   const newName=nv.trim();
-  if(newName===''){ // ---- удаление ----
-    const cnt=state.tasks.filter(t=>!t.done&&t.project===name).length;
-    if(cnt>0){
-      const ans=prompt('Удаляю проект «'+name+'». В нём '+cnt+' активных задач(и). Что с ними сделать?\n\n1 — перенести во «Входящие»\n2 — удалить вместе с проектом\n\n(любой другой ответ — отмена)','1');
-      if(ans==='1'){state.tasks.forEach(t=>{if(t.project===name)t.project='Входящие';});}
-      else if(ans==='2'){if(!confirm('Точно удалить проект «'+name+'» И все его задачи безвозвратно?'))return;state.tasks=state.tasks.filter(t=>t.project!==name);}
-      else return;
-    } else {
-      if(!confirm('Удалить пустой проект «'+name+'»?'))return;
-      state.tasks=state.tasks.filter(t=>t.project!==name); // на случай выполненных задач в этом проекте
-    }
-    state.projects=state.projects.filter(p=>p!==name);
-    if(view.type==='project'&&view.value===name)view={type:'today'};
-    if(refine.project===name)refine.project=null;
-    save();render();toast('Проект «'+name+'» удалён');
-    return;
-  }
-  // ---- переименование ----
+  if(!newName)return;
   if(newName===name)return;
   if(state.projects.some(p=>p.toLowerCase()===newName.toLowerCase())){alert('Проект с именем «'+newName+'» уже существует.');return;}
   state.projects=state.projects.map(p=>p===name?newName:p);
@@ -755,10 +762,10 @@ function renderNav(){
     navItem('done',null,'Выполненные','✅');
   document.getElementById('nav-projects').innerHTML=
     state.projects.map(p=>navItem('project',p,p,null,PROJ_COLOR[p]||'#999',`data-drop-proj="${p}"`,
-      p==='Входящие'?'':`<button class="proj-menu" data-projmenu="${esc(p)}" title="Переименовать или удалить">⋯</button>`)).join('');
+      p==='Входящие'?'':`<button class="proj-menu" data-projrename="${esc(p)}" title="Переименовать">✎</button><button class="proj-menu proj-del" data-projdel="${esc(p)}" title="Удалить проект">×</button>`)).join('');
   const labels=[...new Set(state.tasks.flatMap(t=>t.labels))];
   document.getElementById('nav-labels').innerHTML=
-    labels.map(l=>`<div class="nav-item ${view.type==='label'&&view.value===l?'active':''}" data-type="label" data-value="${l}"><span class="ic">@</span><span>${l}</span></div>`).join('')||'<div style="font-size:12px;color:#aaa;padding:4px 12px">пока нет</div>';
+    labels.map(l=>`<div class="nav-item ${view.type==='label'&&view.value===l?'active':''}" data-type="label" data-value="${l}"><span class="ic">@</span><span>${l}</span><button class="proj-menu proj-del" data-labeldel="${esc(l)}" title="Удалить метку">×</button></div>`).join('')||'<div style="font-size:12px;color:#aaa;padding:4px 12px">пока нет</div>';
 }
 function renderMain(){
   const meta=VIEW_META[view.type]||{t:view.value,ic:view.type==='label'?'@':'•'};
@@ -839,9 +846,12 @@ function taskHTML(t){
 }
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 let toastTimer=null;
-function toast(msg){
+function toast(msg,action){
   const el=document.getElementById('toast');if(!el)return;
-  el.textContent=msg;el.classList.add('show');
+  el.textContent=msg;
+  el.classList.toggle('has-action',!!action);
+  if(action){const b=document.createElement('button');b.textContent=action.label;b.onclick=()=>{el.classList.remove('show');action.fn()};el.appendChild(b)}
+  el.classList.add('show');
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
 }
 function overdueTasks(){const t=todayStr();return activeTasks().filter(x=>x.due&&x.due<t)}
@@ -1146,8 +1156,12 @@ document.addEventListener('click',e=>{
     if(e.target.id!=='datePick'){const inp=document.getElementById('datePick');if(inp&&inp.showPicker){try{inp.showPicker()}catch(_){inp.focus()}}else if(inp)inp.focus();}
     return;
   }
-  const pmenu=e.target.closest('[data-projmenu]');
-  if(pmenu){e.stopPropagation();projectMenu(pmenu.dataset.projmenu);return}
+  const pren=e.target.closest('[data-projrename]');
+  if(pren){e.stopPropagation();renameProject(pren.dataset.projrename);return}
+  const pdel=e.target.closest('[data-projdel]');
+  if(pdel){e.stopPropagation();deleteProject(pdel.dataset.projdel);return}
+  const ldel=e.target.closest('[data-labeldel]');
+  if(ldel){e.stopPropagation();deleteLabel(ldel.dataset.labeldel);return}
   const nav=e.target.closest('.nav-item');
   if(nav){
     const ty=nav.dataset.type;
@@ -1250,7 +1264,7 @@ function closeMenu(){sidebarEl.classList.remove('open');backdropEl.classList.rem
 document.getElementById('menu-btn').onclick=openMenu;
 backdropEl.onclick=closeMenu;
 // close drawer after picking anything in the sidebar on mobile
-sidebarEl.addEventListener('click',e=>{if(window.innerWidth<=760&&e.target.closest('.nav-item,#theme-toggle')&&!e.target.closest('[data-projmenu]'))closeMenu()});
+sidebarEl.addEventListener('click',e=>{if(window.innerWidth<=760&&e.target.closest('.nav-item,#theme-toggle')&&!e.target.closest('[data-projrename],[data-projdel],[data-labeldel]'))closeMenu()});
 
 // ---------- recognition rules modal ----------
 const rulesOverlay=document.getElementById('rules-overlay');
