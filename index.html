@@ -284,6 +284,53 @@
   @media(min-width:761px){
     #backdrop,#sidebar.open{} /* no-op: ensure desktop unaffected */
   }
+
+  /* ---------- Карточки задач: сетка 3 / 2 / 1 в ряд ---------- */
+  #main-inner{max-width:1120px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px;margin-top:6px}
+  .task{position:relative;min-width:0;display:flex;flex-direction:column;gap:10px;padding:14px 16px 14px 19px;border:1px solid #e8e8e8;border-bottom:1px solid #e8e8e8;border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);overflow:hidden;transition:box-shadow .15s,transform .15s}
+  .task::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--pc,#bbb)}
+  .task:hover{background:#fff;box-shadow:0 4px 14px rgba(0,0,0,.08)}
+  .card-top{display:flex;align-items:center;gap:8px;min-height:24px}
+  .card-proj{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--pc,#777);background:color-mix(in srgb,var(--pc,#999) 12%,transparent);border-radius:20px;padding:3px 10px 3px 8px;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .card-proj .dot{width:8px;height:8px;border-radius:50%;background:var(--pc,#999);flex:none}
+  .card-prio{font-size:12px;font-weight:700;border-radius:20px;padding:3px 9px}
+  .card-prio.p1{color:var(--red);background:#fdeceb}
+  .card-prio.p2{color:#b86a00;background:#fdf1e0}
+  .task .del{position:static;margin-left:auto;font-size:20px;line-height:1;padding:0 6px}
+  .card-main{display:flex;align-items:flex-start;gap:11px}
+  .card-main .check{width:22px;height:22px;margin-top:1px}
+  .task-title{font-size:16px;font-weight:600;line-height:1.35}
+  .task-note{font-size:13.5px;margin-top:0;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .task-meta{gap:6px;margin-top:auto}
+  .task-meta .chip{font-size:13px;color:#555;background:#f3f3f3;border-radius:7px;padding:4px 9px;font-weight:500}
+  .task-meta .chip.due.overdue{color:var(--red);background:#fdeceb;font-weight:700}
+  .task-meta .chip.due.today{color:#1f7a34;background:#e7f5ea;font-weight:700}
+  .task-meta .chip.time{color:#246fe0;background:#e8f0fd}
+  .task-meta .chip.repeat{color:#8a5cc0;background:#f2ecfa}
+  .task-meta .label-chip{font-size:13px;font-weight:600;background:#eef0ff;color:#4a58c8;border-radius:7px;padding:4px 9px}
+  .task-meta .sub-toggle{font-size:13px;background:#f3f3f3;border-radius:7px;padding:4px 9px}
+  .subtasks{margin:0}
+  .sub-title{font-size:14px}
+  .task.drop-hover{box-shadow:0 0 0 2px var(--accent) !important}
+  .date-group{font-size:15px;margin:26px 0 4px}
+  .date-group:first-child{margin-top:8px}
+  body.dark .task{background:#232323;border-color:#303030}
+  body.dark .task:hover{background:#262626;box-shadow:0 4px 14px rgba(0,0,0,.4)}
+  body.dark .task-meta .chip,body.dark .task-meta .sub-toggle{background:#2e2e2e;color:#c8c8c8}
+  body.dark .task-meta .chip.due.overdue{background:#3a2420;color:#ff7a6e}
+  body.dark .task-meta .chip.due.today{background:#1f3324;color:#7fd492}
+  body.dark .task-meta .chip.time{background:#1e2a3d;color:#6fa8ff}
+  body.dark .task-meta .chip.repeat{background:#2c2440;color:#b6a0e6}
+  body.dark .task-meta .label-chip{background:#2b2b3a;color:#9aa6e0}
+  body.dark .card-prio.p1{background:#3a2420}
+  body.dark .card-prio.p2{background:#3a2e1c;color:#f0b35a}
+  @media(max-width:760px){
+    .cards{grid-template-columns:minmax(0,1fr);gap:10px}
+    .task{padding:14px 14px 14px 18px}
+    .task-title{font-size:17px}
+    .task .del{display:none}
+  }
 </style>
 </head>
 <body>
@@ -389,6 +436,9 @@
 <script>
 const STORE_KEY = 'myTasksData_him_v1';
 const PR = {1:'var(--red)',2:'var(--orange)',3:'var(--blue)',4:'var(--grey)'};
+const EXTRA_COLORS=['#e8590c','#2b8a3e','#5f3dc4','#c2255c','#1971c2','#0c8599','#e67700','#862e9c'];
+// Цвет проекта: свой из PROJ_COLOR или стабильный из палитры по имени
+function projColor(p){if(PROJ_COLOR[p])return PROJ_COLOR[p];let h=0;for(const c of String(p))h=(h*31+c.charCodeAt(0))>>>0;return EXTRA_COLORS[h%EXTRA_COLORS.length]}
 const PROJ_COLOR = {'Входящие':'#808080','Личное':'#246fe0','СГЛА':'#eb8909','СтартФит':'#299438','Бриллионс':'#af38eb','EFRecords':'#e05194','Юнитех':'#0aa5b5','Внутр':'#d4263f'};
 const DEFAULT_PROJECTS = ['Входящие','Личное','СГЛА','СтартФит','Бриллионс','EFRecords','Юнитех','Внутр'];
 const REPEAT_LABEL = {daily:'каждый день',weekdays:'по будням',weekly:'каждую неделю',monthly:'каждый месяц'};
@@ -689,7 +739,7 @@ function renderRefine(){
   const el=document.getElementById('refine');
   if(view.type==='done'){el.innerHTML='';return}
   const projChips=state.projects.filter(p=>p!=='Входящие').map(p=>
-    `<div class="refine-chip ${refine.project===p?'active':''}" data-rproj="${p}"><span class="dot" style="background:${PROJ_COLOR[p]||'#999'}"></span>${p}</div>`).join('');
+    `<div class="refine-chip ${refine.project===p?'active':''}" data-rproj="${p}"><span class="dot" style="background:${projColor(p)}"></span>${p}</div>`).join('');
   // метки показываем только те, что есть в выбранном проекте (или все, если проект не выбран)
   const labelPool=refine.project?state.tasks.filter(t=>t.project===refine.project):state.tasks;
   const labels=[...new Set(labelPool.flatMap(t=>t.labels))];
@@ -761,7 +811,7 @@ function renderNav(){
     navItem('all',null,'Все задачи','📋')+
     navItem('done',null,'Выполненные','✅');
   document.getElementById('nav-projects').innerHTML=
-    state.projects.map(p=>navItem('project',p,p,null,PROJ_COLOR[p]||'#999',`data-drop-proj="${p}"`,
+    state.projects.map(p=>navItem('project',p,p,null,projColor(p),`data-drop-proj="${p}"`,
       p==='Входящие'?'':`<button class="proj-menu" data-projrename="${esc(p)}" title="Переименовать">✎</button><button class="proj-menu proj-del" data-projdel="${esc(p)}" title="Удалить проект">×</button>`)).join('');
   const labels=[...new Set(state.tasks.flatMap(t=>t.labels))];
   document.getElementById('nav-labels').innerHTML=
@@ -798,7 +848,7 @@ function renderMain(){
   if(view.type==='today'){
     const od=viewDay()===todayStr()?overdueTasks():[];
     if(od.length)html+=`<div class="overdue-bar">⚠️ Просрочено: ${od.length} ${od.length===1?'задача':od.length<5?'задачи':'задач'}<button data-move-overdue>Перенести на сегодня</button></div>`;
-    tasks.forEach(t=>html+=taskHTML(t));
+    html+=cardsHTML(tasks);
   } else if(view.type==='all'){
     // «Без даты» сверху, дальше по дням
     const groups={};
@@ -806,21 +856,21 @@ function renderMain(){
     Object.keys(groups).sort((a,b)=>!a?-1:!b?1:a<b?-1:1).forEach(d=>{
       const lbl=!d?'Без даты':(relDay(d)?relDay(d)+', ':'')+fmtDateFull(d);
       html+=`<div class="date-group${d&&d<=todayStr()?' today':''}" ${d?`data-drop-date="${d}"`:''}>${lbl}${d&&d<todayStr()?' · просрочено':''}</div>`;
-      groups[d].forEach(t=>html+=taskHTML(t));
+      html+=cardsHTML(groups[d]);
     });
   } else {
-    tasks.forEach(t=>html+=taskHTML(t));
+    html+=cardsHTML(tasks);
   }
   list.innerHTML=html;
 }
 function taskHTML(t){
   const t0=todayStr();
   const overdue=t.due&&t.due<t0;
-  const due=t.due?`<span class="chip due ${overdue?'overdue':''}">📅 ${fmtDate(t.due)}</span>`:'';
+  const due=t.due?`<span class="chip due ${overdue?'overdue':t.due===t0?'today':''}">📅 ${fmtDate(t.due)}</span>`:'';
   const time=t.dueTime?`<span class="chip time">🕘 ${t.dueTime}</span>`:'';
   const repLabel=t.repeat==='everyN'?`каждые ${t.repeatN||1} дн.`:(REPEAT_LABEL[t.repeat]||'');
   const repeat=t.repeat?`<span class="chip repeat">🔁 ${repLabel}</span>`:'';
-  const proj=(view.type!=='project'&&t.project!=='Входящие')?`<span class="chip proj"><span class="dot" style="background:${PROJ_COLOR[t.project]||'#999'}"></span>${t.project}</span>`:'';
+  const projTag=view.type!=='project'?`<span class="card-proj"><span class="dot"></span>${esc(t.project)}</span>`:'';
   const labels=t.labels.map(l=>`<span class="label-chip">@${l}</span>`).join('');
   const subs=t.subtasks||[];
   const doneN=subs.filter(s=>s.done).length;
@@ -833,17 +883,19 @@ function taskHTML(t){
   }
   const pc=t.priority<4?` p${t.priority}`:'';
   const note=t.note?`<div class="task-note">${esc(t.note)}</div>`:'';
-  return `<div class="task" draggable="${IS_TOUCH?'false':'true'}" data-id="${t.id}">
-    <div class="check${pc}" data-check="${t.id}"></div>
-    <div class="task-body">
+  const prio=t.priority===1?`<span class="card-prio p1">Высокий</span>`:t.priority===2?`<span class="card-prio p2">Средний</span>`:'';
+  return `<div class="task" style="--pc:${projColor(t.project)}" draggable="${IS_TOUCH?'false':'true'}" data-id="${t.id}">
+    <div class="card-top">${projTag}${prio}<button class="del" data-del="${t.id}" title="Удалить">×</button></div>
+    <div class="card-main">
+      <div class="check${pc}" data-check="${t.id}"></div>
       <div class="task-title">${esc(t.title)}</div>
-      <div class="task-meta">${subToggle}${due}${time}${repeat}${proj}${labels}</div>
-      ${note}
-      ${subHTML}
     </div>
-    <button class="del" data-del="${t.id}">×</button>
+    ${note}
+    ${subHTML}
+    <div class="task-meta">${due}${time}${repeat}${labels}${subToggle}</div>
   </div>`;
 }
+function cardsHTML(ts){return `<div class="cards">${ts.map(taskHTML).join('')}</div>`}
 function esc(s){return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
 let toastTimer=null;
 function toast(msg,action){
