@@ -30,8 +30,15 @@
   .nav-item:hover .proj-menu{opacity:1}
   .proj-menu:hover{background:rgba(128,128,128,.2);color:var(--text)}
   body.dark .proj-menu{color:#888}
-  #date-nav{position:relative}
-  #date-nav input[type=date]{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0;pointer-events:none}
+  .day-arrow{background:none;border:none;color:var(--muted);font-size:24px;line-height:1;width:32px;height:32px;border-radius:8px;cursor:pointer;flex:none}
+  .day-arrow:hover{background:#eee;color:var(--text)}
+  .day-label{position:relative;cursor:pointer;border-radius:8px;padding:2px 8px;white-space:nowrap}
+  .day-label:hover{background:#eee}
+  .day-label input[type=date]{position:absolute;left:0;bottom:0;width:1px;height:1px;opacity:0;border:0;padding:0;margin:0;pointer-events:none}
+  .day-today{margin-left:6px;font-size:12px;font-weight:600;background:none;border:1px solid #e0e0e0;color:var(--accent);border-radius:7px;padding:5px 11px;cursor:pointer}
+  .day-today:hover{background:#ffefe5}
+  body.dark .day-arrow:hover,body.dark .day-label:hover{background:#2a2a2a}
+  body.dark .day-today{border-color:#383838}
   .day-empty{color:var(--muted);font-size:13px;padding:2px 4px 8px;opacity:.6}
   .nav-section{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:16px 12px 6px;font-weight:700;display:flex;align-items:center}
   #add-proj{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:0 4px;border-radius:5px}
@@ -250,7 +257,9 @@
     #main-inner{padding:0 16px}
     /* на телефоне нет наведения — кнопка управления проектом всегда видна и крупнее для пальца */
     .proj-menu{opacity:.6;font-size:20px;padding:2px 8px}
-    #view-title{font-size:20px}
+    #view-title{font-size:20px;gap:4px}
+    .day-label{font-size:18px;padding:2px 4px}
+    .day-today{margin-left:auto}
     #quickadd{flex-direction:column;gap:10px}
     #qa-btn{padding:12px;width:100%}
     #qa-input{padding:13px 14px;font-size:16px}
@@ -493,7 +502,6 @@ function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0'
 function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return iso(d)}
 function addDaysStr(s,n){const d=new Date(s+'T00:00:00');d.setDate(d.getDate()+n);return iso(d)}
 // Понедельник текущей недели (неделя пн–вс)
-function weekStart(){const d=new Date();const dow=(d.getDay()+6)%7;d.setDate(d.getDate()-dow);return iso(d)}
 const MONTHS=['янв','фев','мар','апр','ма','июн','июл','авг','сен','окт','ноя','дек'];
 function fmtDate(s){
   if(!s)return'';
@@ -634,12 +642,11 @@ function activeTasks(){return state.tasks.filter(t=>!t.done)}
 function getViewTasks(ignoreRefine){
   const t=todayStr();
   let res=[];
-  if(view.type==='today')res=activeTasks().filter(x=>x.due&&x.due<=t);
-  else if(view.type==='week'){const start=weekStart();const end=addDaysStr(start,6);res=activeTasks().filter(x=>x.due&&x.due>=start&&x.due<=end);}
-  else if(view.type==='date')res=activeTasks().filter(x=>x.due===view.value);
-  else if(view.type==='upcoming')res=activeTasks().filter(x=>x.due&&x.due>t);
-  else if(view.type==='inbox')res=activeTasks().filter(x=>x.project==='Входящие');
-  else if(view.type==='important')res=activeTasks().filter(x=>x.priority===1);
+  if(view.type==='today'){
+    // на сегодняшнем дне видны и просроченные, на любом другом — только задачи этого дня
+    const d=viewDay();
+    res=activeTasks().filter(x=>x.due&&(d===t?x.due<=t:x.due===d));
+  }
   else if(view.type==='all')res=activeTasks();
   else if(view.type==='done')res=state.tasks.filter(x=>x.done);
   else if(view.type==='project')res=activeTasks().filter(x=>x.project===view.value);
@@ -651,9 +658,14 @@ function getViewTasks(ignoreRefine){
   return res;
 }
 const VIEW_META={
-  today:{t:'Сегодня',ic:'📅'},week:{t:'Неделя',ic:'🗓'},upcoming:{t:'Предстоящие',ic:'🗓'},inbox:{t:'Входящие',ic:'📥'},
-  important:{t:'Важное',ic:'🚩'},all:{t:'Все задачи',ic:'📋'},done:{t:'Выполненные',ic:'✅'},date:{t:'Дата',ic:'📆'}
+  today:{t:'Сегодня',ic:'📅'},all:{t:'Все задачи',ic:'📋'},done:{t:'Выполненные',ic:'✅'}
 };
+// День, открытый в «Сегодня»: view.value (YYYY-MM-DD) или сегодняшний
+function viewDay(){return view.value||todayStr()}
+// «1 задача», «3 задачи», «5 задач»
+function tasksWord(n){const a=n%10,b=n%100;return n+' '+(a===1&&b!==11?'задача':a>=2&&a<=4&&(b<12||b>14)?'задачи':'задач')}
+// «Сегодня» / «Завтра» / «Вчера» относительно текущей даты, иначе пусто
+function relDay(d){const t=todayStr();return d===t?'Сегодня':d===addDaysStr(t,1)?'Завтра':d===addDaysStr(t,-1)?'Вчера':''}
 // Полная подпись даты для заголовка («4 июня, четверг»)
 function fmtDateFull(s){
   if(!s)return'';
@@ -686,7 +698,7 @@ function renderRefine(){
       `<div class="refine-chip ${!refine.label?'active':''}" data-rlabel="">Все</div>`+labelChips:'');
 }
 function navItem(type,value,label,icon,dotColor,dropAttr,extra){
-  const active=view.type===type && (view.value||null)===(value||null);
+  const active=view.type===type && (type==='today'||(view.value||null)===(value||null));
   let count='';
   const saved={type,value};
   const tmp=view; view=saved; const n=getViewTasks(true).length; view=tmp;
@@ -737,15 +749,8 @@ function projectMenu(name){
   save();render();toast('Проект переименован → «'+newName+'»');
 }
 function renderNav(){
-  const dateActive=view.type==='date';
-  const dateLabel=dateActive?fmtDateFull(view.value):'Выбрать дату';
-  const dateNav=`<div class="nav-item ${dateActive?'active':''}" id="date-nav"><span class="ic">📆</span><span>${dateLabel}</span><input type="date" id="datePick" value="${dateActive?view.value:todayStr()}"></div>`;
   document.getElementById('nav-fixed').innerHTML=
     navItem('today',null,'Сегодня','📅',null,`data-drop-date="${todayStr()}"`)+
-    navItem('week',null,'Неделя','🗓')+
-    dateNav+
-    navItem('inbox',null,'Входящие','📥')+
-    navItem('important',null,'Важное','🚩')+
     navItem('all',null,'Все задачи','📋')+
     navItem('done',null,'Выполненные','✅');
   document.getElementById('nav-projects').innerHTML=
@@ -764,41 +769,36 @@ function renderMain(){
     if(ad!==bd)return ad<bd?-1:1;
     return (a.order||0)-(b.order||0);
   });
-  const titleText=view.type==='date'?fmtDate(view.value):meta.t;
-  document.getElementById('view-title').innerHTML=`${meta.ic} ${titleText}`;
   const sub=document.getElementById('view-sub');
-  if(view.type==='today'){const d=new Date();sub.textContent=d.getDate()+' '+['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'][d.getMonth()]+', '+['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'][d.getDay()];}
-  else if(view.type==='date')sub.textContent=fmtDateFull(view.value)+' · '+tasks.length+' задач';
-  else if(view.type==='week')sub.textContent='с '+fmtDate(weekStart())+' по '+fmtDate(addDaysStr(weekStart(),6));
-  else sub.textContent=tasks.length+' задач';
+  if(view.type==='today'){
+    // шапка дня: ‹ 5 октября, понедельник › — стрелки листают дни, клик по дате открывает календарь
+    const d=viewDay(),isToday=d===todayStr();
+    document.getElementById('view-title').innerHTML=
+      `<button class="day-arrow" data-day-shift="-1" title="Предыдущий день">‹</button>`+
+      `<span class="day-label" id="day-label" title="Выбрать дату">${fmtDateFull(d)}<input type="date" id="datePick" value="${d}"></span>`+
+      `<button class="day-arrow" data-day-shift="1" title="Следующий день">›</button>`+
+      (isToday?'':`<button class="day-today" data-day-today>Сегодня</button>`);
+    sub.textContent=[relDay(d),tasksWord(tasks.length)].filter(Boolean).join(' · ');
+  } else {
+    document.getElementById('view-title').innerHTML=`${meta.ic} ${meta.t}`;
+    sub.textContent=tasksWord(tasks.length);
+  }
 
   const list=document.getElementById('list');
-  // Неделя всегда показывает 7 дней с разбивкой — даже пустые
-  if(!tasks.length&&view.type!=='week'){list.innerHTML=`<div class="empty"><div class="big">🎉</div>Здесь пусто. Отдыхай или добавь задачу выше.</div>`;return}
+  if(!tasks.length){list.innerHTML=`<div class="empty"><div class="big">🎉</div>Здесь пусто. Отдыхай или добавь задачу выше.</div>`;return}
 
   let html='';
   if(view.type==='today'){
-    const od=overdueTasks();
+    const od=viewDay()===todayStr()?overdueTasks():[];
     if(od.length)html+=`<div class="overdue-bar">⚠️ Просрочено: ${od.length} ${od.length===1?'задача':od.length<5?'задачи':'задач'}<button data-move-overdue>Перенести на сегодня</button></div>`;
     tasks.forEach(t=>html+=taskHTML(t));
-  } else if(view.type==='week'){
+  } else if(view.type==='all'){
+    // «Без даты» сверху, дальше по дням
     const groups={};
-    tasks.forEach(t=>{(groups[t.due]=groups[t.due]||[]).push(t)});
-    const start=weekStart();const WDF=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'];
-    for(let i=0;i<7;i++){
-      const d=addDaysStr(start,i);const dd=new Date(d+'T00:00:00');
-      let lbl=WDF[dd.getDay()].charAt(0).toUpperCase()+WDF[dd.getDay()].slice(1)+', '+dd.getDate()+' '+MONTHS[dd.getMonth()];
-      if(d===todayStr())lbl+=' · сегодня';
-      html+=`<div class="date-group${d===todayStr()?' today':''}" data-drop-date="${d}">${lbl}</div>`;
-      const day=groups[d]||[];
-      if(day.length){day.forEach(t=>html+=taskHTML(t));html+=`<div class="day-end" data-drop-date="${d}"></div>`;}
-      else html+=`<div class="day-empty" data-drop-date="${d}">—</div>`;
-    }
-  } else if(view.type==='upcoming'){
-    const groups={};
-    tasks.forEach(t=>{(groups[t.due]=groups[t.due]||[]).push(t)});
-    Object.keys(groups).sort().forEach(d=>{
-      html+=`<div class="date-group" data-drop-date="${d}">${fmtDate(d)}</div>`;
+    tasks.forEach(t=>{(groups[t.due||'']=groups[t.due||'']||[]).push(t)});
+    Object.keys(groups).sort((a,b)=>!a?-1:!b?1:a<b?-1:1).forEach(d=>{
+      const lbl=!d?'Без даты':(relDay(d)?relDay(d)+', ':'')+fmtDateFull(d);
+      html+=`<div class="date-group${d&&d<=todayStr()?' today':''}" ${d?`data-drop-date="${d}"`:''}>${lbl}${d&&d<todayStr()?' · просрочено':''}</div>`;
       groups[d].forEach(t=>html+=taskHTML(t));
     });
   } else {
@@ -850,6 +850,7 @@ function moveOverdueToday(){const t=todayStr();overdueTasks().forEach(x=>x.due=t
 // ---------- actions ----------
 function createTask(p){
   if(!p||!p.title)return;
+  if(!p.due&&view.type==='today')p.due=viewDay();
   const maxOrder=state.tasks.reduce((m,x)=>Math.max(m,x.order||0),0);
   state.tasks.push({id:uid(),title:p.title,project:p.project||'Входящие',priority:p.priority||4,due:p.due||(p.repeat?todayStr():null),dueTime:p.dueTime||null,labels:p.labels||[],note:p.note||'',done:false,created:Date.now(),repeat:p.repeat||null,repeatN:p.repeatN||null,subtasks:Array.isArray(p.subtasks)?p.subtasks:[],order:maxOrder+1});
   save();render();
@@ -1109,9 +1110,7 @@ document.getElementById('m-repeat').addEventListener('change',syncRepeatN);
 // ---------- events ----------
 document.addEventListener('change',e=>{
   if(e.target&&e.target.id==='datePick'&&e.target.value){
-    refine={project:null,label:null};
-    view={type:'date',value:e.target.value};render();
-    if(window.innerWidth<=760&&typeof closeMenu==='function')closeMenu();
+    view={type:'today',value:e.target.value===todayStr()?undefined:e.target.value};render();
   }
 });
 document.getElementById('qa-btn').onclick=submitQuickAdd;
@@ -1139,7 +1138,10 @@ document.addEventListener('click',e=>{
   }
   const rlabel=e.target.closest('[data-rlabel]');
   if(rlabel){refine.label=rlabel.dataset.rlabel||null;render();return}
-  const dnav=e.target.closest('#date-nav');
+  const shift=e.target.closest('[data-day-shift]');
+  if(shift){const d=addDaysStr(viewDay(),+shift.dataset.dayShift);view={type:'today',value:d===todayStr()?undefined:d};render();return}
+  if(e.target.closest('[data-day-today]')){view={type:'today'};render();return}
+  const dnav=e.target.closest('#day-label');
   if(dnav){
     if(e.target.id!=='datePick'){const inp=document.getElementById('datePick');if(inp&&inp.showPicker){try{inp.showPicker()}catch(_){inp.focus()}}else if(inp)inp.focus();}
     return;
