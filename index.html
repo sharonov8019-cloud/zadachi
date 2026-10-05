@@ -317,7 +317,23 @@
   body.dark .task-meta .label-chip{background:#2b2b3a;color:#9aa6e0}
   body.dark .card-prio.p1{background:#3a2420}
   body.dark .card-prio.p2{background:#3a2e1c;color:#f0b35a}
+  .task-meta .chip.stuck{color:#a15c00;background:#fff3db}
+  .task.is-stuck{border-color:#f0b35a;box-shadow:0 0 0 1px #f0b35a}
+  .stuck-box{background:#fff7e8;border-radius:9px;padding:10px 11px;margin-top:2px}
+  .stuck-title{font-size:13px;font-weight:700;color:#a15c00;margin-bottom:8px}
+  .stuck-actions{display:flex;flex-wrap:wrap;gap:6px}
+  .stuck-actions button{font-size:12.5px;font-weight:600;border:1px solid #f0d3a0;background:#fff;color:#7a4a00;border-radius:7px;padding:6px 10px;cursor:pointer}
+  .stuck-actions button:hover{background:#ffefd1}
+  .stuck-actions button.danger{color:var(--red);border-color:#f5c6c2}
+  .stuck-actions button.danger:hover{background:#fdeceb}
+  body.dark .task-meta .chip.stuck{background:#3a2e1c;color:#f0b35a}
+  body.dark .task.is-stuck{border-color:#8a5a12;box-shadow:0 0 0 1px #8a5a12}
+  body.dark .stuck-box{background:#2e2618}
+  body.dark .stuck-title{color:#f0b35a}
+  body.dark .stuck-actions button{background:#262626;border-color:#5a4520;color:#f0c27a}
+  body.dark .stuck-actions button.danger{color:#ff7a6e;border-color:#5a2e28}
   @media(max-width:760px){
+    .stuck-actions button{padding:9px 11px;font-size:13.5px}
     .cards{grid-template-columns:minmax(0,1fr);gap:10px}
     .task{padding:14px 14px 14px 18px}
     .task-title{font-size:17px}
@@ -722,11 +738,26 @@ function fmtDateFull(s){
 }
 
 // ---------- render ----------
-// Просроченные задачи сами переезжают на сегодня; сколько раз задачу так переносили — в t.postponed
+// Просроченные задачи сами переезжают на сегодня. В t.stuckSince — дата, на которую задача
+// стояла изначально: по ней считаем, сколько дней её откладывают.
+const STUCK_DAYS=7;
 function rollOverdue(){
   const t=todayStr();let n=0;
-  state.tasks.forEach(x=>{if(!x.done&&x.due&&x.due<t){x.due=t;x.postponed=(x.postponed||0)+1;n++}});
+  state.tasks.forEach(x=>{if(!x.done&&x.due&&x.due<t){if(!x.stuckSince)x.stuckSince=x.due;x.due=t;n++}});
   return n;
+}
+function stuckDays(x){return x.stuckSince?Math.round((new Date(todayStr()+'T00:00:00')-new Date(x.stuckSince+'T00:00:00'))/864e5):0}
+function isStuck(x){return !x.done&&stuckDays(x)>=STUCK_DAYS}
+function daysWord(n){const a=n%10,b=n%100;return n+' '+(a===1&&b!==11?'день':a>=2&&a<=4&&(b<12||b>14)?'дня':'дней')}
+// Что сделать с зависшей задачей
+function stuckAction(id,act){
+  const x=state.tasks.find(t=>t.id===id);if(!x)return;
+  if(act==='del'){state.tasks=state.tasks.filter(t=>t.id!==id);save();render();toast('Задача удалена');return}
+  if(act==='week')x.due=addDaysStr(todayStr(),7);
+  if(act==='nodate')x.due=null;
+  delete x.stuckSince; // «Оставить» — просто сбрасываем счётчик, задача остаётся на сегодня
+  save();render();
+  toast(act==='week'?'Перенесено на '+fmtDate(x.due):act==='nodate'?'Убрано в «Все задачи» без даты':'Счётчик сброшен');
 }
 function render(){
   // сохраняем после текущего кадра: render может идти внутри применения облачных данных
@@ -812,6 +843,7 @@ function renderMain(){
   let tasks=getViewTasks();
   // sort: chronological by date, then manual order within each day (drag to reorder)
   tasks.sort((a,b)=>{
+    if(isStuck(a)!==isStuck(b))return isStuck(a)?-1:1;
     const ad=a.due||'9999',bd=b.due||'9999';
     if(ad!==bd)return ad<bd?-1:1;
     return (a.order||0)-(b.order||0);
@@ -871,8 +903,13 @@ function taskHTML(t){
   }
   const pc=t.priority<4?` p${t.priority}`:'';
   const note=t.note?`<div class="task-note">${esc(t.note)}</div>`:'';
+  const sd=stuckDays(t),stuck=isStuck(t);
+  const stuckBox=stuck?`<div class="stuck-box"><div class="stuck-title">⏳ Откладывается ${daysWord(sd)} — что делаем?</div><div class="stuck-actions">`+
+    `<button data-stuck="${t.id}|keep">Оставить на сегодня</button><button data-stuck="${t.id}|week">Через неделю</button>`+
+    `<button data-stuck="${t.id}|nodate">Без даты</button><button class="danger" data-stuck="${t.id}|del">Удалить</button></div></div>`:'';
+  const stuckChip=!stuck&&sd>=2?`<span class="chip stuck">⏳ ${daysWord(sd)}</span>`:'';
   const prio=t.priority===1?`<span class="card-prio p1">Высокий</span>`:t.priority===2?`<span class="card-prio p2">Средний</span>`:'';
-  return `<div class="task" style="--pc:${projColor(t.project)}" draggable="${IS_TOUCH?'false':'true'}" data-id="${t.id}">
+  return `<div class="task${stuck?' is-stuck':''}" style="--pc:${projColor(t.project)}" draggable="${IS_TOUCH?'false':'true'}" data-id="${t.id}">
     <div class="card-top">${projTag}${prio}<button class="del" data-del="${t.id}" title="Удалить">×</button></div>
     <div class="card-main">
       <div class="check${pc}" data-check="${t.id}"></div>
@@ -880,7 +917,8 @@ function taskHTML(t){
     </div>
     ${note}
     ${subHTML}
-    <div class="task-meta">${due}${time}${repeat}${labels}${subToggle}</div>
+    <div class="task-meta">${due}${stuckChip}${time}${repeat}${labels}${subToggle}</div>
+    ${stuckBox}
   </div>`;
 }
 function cardsHTML(ts){return `<div class="cards">${ts.map(taskHTML).join('')}</div>`}
@@ -1073,6 +1111,7 @@ function toggleDone(id){
   if(!t.done&&t.repeat){
     // recurring: reschedule to next occurrence instead of completing
     t.due=nextDue(t.due,t.repeat,t.repeatN);
+    delete t.stuckSince;
     (t.subtasks||[]).forEach(s=>s.done=false);
     save();
     const el=document.querySelector(`.task[data-id="${id}"]`);
@@ -1139,7 +1178,9 @@ function saveModal(){
   t.title=document.getElementById('m-title').value.trim()||t.title;
   t.project=document.getElementById('m-project').value;
   t.priority=+document.getElementById('m-priority').value;
-  t.due=document.getElementById('m-due').value||null;
+  const newDue=document.getElementById('m-due').value||null;
+  if(newDue!==t.due)delete t.stuckSince;
+  t.due=newDue;
   t.dueTime=document.getElementById('m-time').value||null;
   t.labels=document.getElementById('m-labels').value.split(',').map(s=>s.trim()).filter(Boolean);
   t.repeat=document.getElementById('m-repeat').value||null;
@@ -1164,6 +1205,8 @@ document.addEventListener('change',e=>{
 document.getElementById('qa-btn').onclick=submitQuickAdd;
 document.getElementById('qa-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitQuickAdd()}});
 document.addEventListener('click',e=>{
+  const stb=e.target.closest('[data-stuck]');
+  if(stb){e.stopPropagation();const[id,act]=stb.dataset.stuck.split('|');stuckAction(id,act);return}
   const unf=e.target.closest('[data-unfilter]');
   if(unf){refine[unf.dataset.unfilter]=null;render();return}
   const shift=e.target.closest('[data-day-shift]');
@@ -1212,6 +1255,7 @@ document.addEventListener('dragleave',e=>{const z=dropTarget(e);if(z&&!z.contain
 // переносит задачу в конкретный день и ставит её В КОНЕЦ этого дня
 function moveToDayEnd(draggedId,dateStr){
   const dragged=state.tasks.find(x=>x.id===draggedId);if(!dragged)return;
+  if(dragged.due!==dateStr)delete dragged.stuckSince;
   dragged.due=dateStr;
   const group=state.tasks.filter(x=>!x.done&&(x.due||null)===(dateStr||null)).sort((a,b)=>(a.order||0)-(b.order||0));
   const gi=group.findIndex(x=>x.id===draggedId);if(gi>=0)group.splice(gi,1);
