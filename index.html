@@ -114,10 +114,6 @@
   .nav-item.filter-on{background:color-mix(in srgb,var(--pc,#4a58c8) 13%,transparent);font-weight:600}
 
   /* Overdue carryover bar */
-  .overdue-bar{display:flex;align-items:center;gap:9px;background:#fdeceb;border:1px solid #f5c6c2;color:var(--red);border-radius:9px;padding:9px 13px;font-size:13px;margin-bottom:14px}
-  .overdue-bar button{margin-left:auto;background:var(--red);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
-  .overdue-bar button:hover{background:#b03c33}
-  body.dark .overdue-bar{background:#3a2420;border-color:#5a2e28}
 
   /* Toast */
   #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(18px);background:#333;color:#fff;padding:11px 18px;border-radius:9px;font-size:13px;box-shadow:0 4px 18px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:opacity .25s,transform .25s;z-index:80;max-width:90vw;text-align:center}
@@ -726,7 +722,15 @@ function fmtDateFull(s){
 }
 
 // ---------- render ----------
+// Просроченные задачи сами переезжают на сегодня; сколько раз задачу так переносили — в t.postponed
+function rollOverdue(){
+  const t=todayStr();let n=0;
+  state.tasks.forEach(x=>{if(!x.done&&x.due&&x.due<t){x.due=t;x.postponed=(x.postponed||0)+1;n++}});
+  return n;
+}
 function render(){
+  // сохраняем после текущего кадра: render может идти внутри применения облачных данных
+  if(rollOverdue())setTimeout(save,0);
   renderNav();
   renderRefine();
   renderMain();
@@ -832,8 +836,6 @@ function renderMain(){
 
   let html='';
   if(view.type==='today'){
-    const od=viewDay()===todayStr()?overdueTasks():[];
-    if(od.length)html+=`<div class="overdue-bar">⚠️ Просрочено: ${od.length} ${od.length===1?'задача':od.length<5?'задачи':'задач'}<button data-move-overdue>Перенести на сегодня</button></div>`;
     html+=cardsHTML(tasks);
   } else if(view.type==='all'){
     // «Без даты» сверху, дальше по дням
@@ -892,8 +894,6 @@ function toast(msg,action){
   el.classList.add('show');
   clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove('show'),3200);
 }
-function overdueTasks(){const t=todayStr();return activeTasks().filter(x=>x.due&&x.due<t)}
-function moveOverdueToday(){const t=todayStr();overdueTasks().forEach(x=>x.due=t);save();render()}
 
 // ---------- actions ----------
 function createTask(p){
@@ -1164,8 +1164,6 @@ document.addEventListener('change',e=>{
 document.getElementById('qa-btn').onclick=submitQuickAdd;
 document.getElementById('qa-input').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();submitQuickAdd()}});
 document.addEventListener('click',e=>{
-  const movOd=e.target.closest('[data-move-overdue]');
-  if(movOd){const n=overdueTasks().length;moveOverdueToday();toast('Перенесено на сегодня: '+n);return}
   const unf=e.target.closest('[data-unfilter]');
   if(unf){refine[unf.dataset.unfilter]=null;render();return}
   const shift=e.target.closest('[data-day-shift]');
@@ -1600,6 +1598,10 @@ async function initCloud(){
 applyTheme();
 render();
 initCloud();
+let lastDay=todayStr();
+function checkNewDay(){if(todayStr()!==lastDay){lastDay=todayStr();if(!anyModalOpen())render()}}
+setInterval(checkNewDay,60000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkNewDay()});
 </script>
 </body>
 </html>
