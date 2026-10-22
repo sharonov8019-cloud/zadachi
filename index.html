@@ -211,7 +211,7 @@
   .subtask{display:flex;align-items:center;gap:9px;padding:5px 4px;cursor:pointer}
   .subtask:hover{background:rgba(128,128,128,.06);border-radius:5px}
   .sub-check{width:15px;height:15px;border:1.5px solid #bbb;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff}
-  .sub-check.done{background:var(--blue);border-color:var(--blue)}
+  .sub-check.done{background:#22c55e;border-color:#22c55e}
   .sub-title{font-size:13px}
   .sub-title.done{text-decoration:line-through;color:var(--muted)}
 
@@ -231,7 +231,18 @@
   .sub-edit-row input{flex:1}
   .sub-edit-row button{background:none;border:none;color:#bbb;cursor:pointer;font-size:16px;padding:2px 6px}
   .sub-edit-row button:hover{color:var(--red)}
-  .sub-head{display:flex;align-items:flex-end;justify-content:space-between;gap:10px}
+  .sub-head{display:flex;align-items:flex-end;gap:10px}
+  .sub-head #m-sub-ai{margin-left:auto}
+  #m-sub-progress{flex:1;min-width:0;margin-bottom:6px}
+  .sub-progress{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--muted)}
+  .sub-progress-bar{flex:1;height:6px;border-radius:4px;background:#ececec;overflow:hidden;min-width:40px}
+  .sub-progress-bar i{display:block;height:100%;background:#22c55e;border-radius:4px;transition:width .2s}
+  .sub-progress.full span{color:#16a34a}
+  body.dark .sub-progress-bar{background:#333}
+  .sub-chk{width:22px;height:22px;flex:none;border:1.5px solid #bbb !important;border-radius:50%;padding:0 !important;font-size:12px !important;color:#fff !important;display:flex;align-items:center;justify-content:center}
+  .sub-chk:hover{border-color:#22c55e !important}
+  .sub-edit-row.done .sub-chk{background:#22c55e;border-color:#22c55e !important}
+  .sub-edit-row.done input{text-decoration:line-through;color:var(--muted)}
   #m-sub-ai{background:#f3efff;color:#6741d9;border:none;border-radius:7px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;margin-bottom:4px;white-space:nowrap}
   #m-sub-ai:hover{background:#e9e1ff}
   #m-sub-ai:disabled{opacity:.6;cursor:wait}
@@ -413,7 +424,7 @@
     </div>
     <label>Комментарий</label>
     <textarea id="m-note" rows="2" placeholder="Необязательно"></textarea>
-    <div class="sub-head"><label>Подзадачи</label><button id="m-sub-ai" type="button" title="ИИ распишет задачу на шаги — их можно поправить">✨ ИИ предложит</button></div>
+    <div class="sub-head"><label>Подзадачи</label><div id="m-sub-progress"></div><button id="m-sub-ai" type="button" title="ИИ распишет задачу на шаги — их можно поправить">✨ ИИ предложит</button></div>
     <div id="m-subs"></div>
     <button id="m-sub-add" type="button">+ подзадача</button>
     <div class="modal-actions">
@@ -990,6 +1001,7 @@ function taskHTML(t){
       <div class="task-title">${esc(t.title)}</div>
     </div>
     ${note}
+    ${subs.length?subProgressHTML(subs):''}
     ${subHTML}
     <div class="task-meta">${due}${stuckChip}${time}${repeat}${labels}${subToggle}</div>
     ${stuckBox}
@@ -1210,9 +1222,15 @@ function delTask(id){state.tasks=state.tasks.filter(x=>x.id!==id);save();render(
 // ---------- modal ----------
 let editingId=null;
 let editSubs=[];
+function subProgressHTML(subs){
+  const all=subs.filter(x=>x.title.trim()).length,done=subs.filter(x=>x.done&&x.title.trim()).length;
+  if(!all)return '';
+  return `<div class="sub-progress${done===all?' full':''}"><div class="sub-progress-bar"><i style="width:${Math.round(done/all*100)}%"></i></div><span>${done}/${all}</span></div>`;
+}
 function renderSubEditor(){
+  document.getElementById('m-sub-progress').innerHTML=subProgressHTML(editSubs);
   document.getElementById('m-subs').innerHTML=editSubs.map((s,i)=>
-    `<div class="sub-edit-row"><input data-subi="${i}" value="${esc(s.title)}" placeholder="Подзадача"><button type="button" class="sub-move" data-subup="${i}" title="Выше"${i===0?' disabled':''}>↑</button><button type="button" class="sub-move" data-subdown="${i}" title="Ниже"${i===editSubs.length-1?' disabled':''}>↓</button><button type="button" data-subdel="${i}" title="Удалить">×</button></div>`).join('');
+    `<div class="sub-edit-row${s.done?' done':''}"><button type="button" class="sub-chk" data-subchk="${i}" title="${s.done?'Снять отметку':'Отметить сделанной'}">${s.done?'✓':''}</button><input data-subi="${i}" value="${esc(s.title)}" placeholder="Подзадача"><button type="button" class="sub-move" data-subup="${i}" title="Выше"${i===0?' disabled':''}>↑</button><button type="button" class="sub-move" data-subdown="${i}" title="Ниже"${i===editSubs.length-1?' disabled':''}>↓</button><button type="button" data-subdel="${i}" title="Удалить">×</button></div>`).join('');
 }
 // --- защита открытых окон от фоновых обновлений и случайного закрытия ---
 let pendingRemote=null;
@@ -1425,12 +1443,13 @@ ${have.length?'Эти подзадачи уже есть, не повторяй 
 }
 document.getElementById('m-sub-ai').onclick=suggestSubtasks;
 document.getElementById('m-sub-add').onclick=()=>{editSubs.push({id:uid(),title:'',done:false});renderSubEditor();const ins=document.querySelectorAll('#m-subs input');if(ins.length)ins[ins.length-1].focus()};
-document.getElementById('m-subs').addEventListener('input',e=>{const i=e.target.dataset.subi;if(i!==undefined)editSubs[+i].title=e.target.value});
+document.getElementById('m-subs').addEventListener('input',e=>{const i=e.target.dataset.subi;if(i!==undefined){editSubs[+i].title=e.target.value;document.getElementById('m-sub-progress').innerHTML=subProgressHTML(editSubs)}});
 document.getElementById('m-subs').addEventListener('click',e=>{
   const up=e.target.closest('[data-subup]');
   if(up){const i=+up.dataset.subup;if(i>0){[editSubs[i-1],editSubs[i]]=[editSubs[i],editSubs[i-1]];renderSubEditor()}return}
   const dn=e.target.closest('[data-subdown]');
   if(dn){const i=+dn.dataset.subdown;if(i<editSubs.length-1){[editSubs[i],editSubs[i+1]]=[editSubs[i+1],editSubs[i]];renderSubEditor()}return}
+  const ck=e.target.closest('[data-subchk]');if(ck){const s=editSubs[+ck.dataset.subchk];s.done=!s.done;renderSubEditor();return}
   const d=e.target.closest('[data-subdel]');if(d){editSubs.splice(+d.dataset.subdel,1);renderSubEditor()}
 });
 document.getElementById('m-subs').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();document.getElementById('m-sub-add').click()}});
