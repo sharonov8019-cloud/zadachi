@@ -46,6 +46,48 @@
   body.dark .day-arrow:hover,body.dark .day-label:hover{background:#2a2a2a}
   body.dark .day-today{border-color:#383838}
   .day-empty{color:var(--muted);font-size:13px;padding:2px 4px 8px;opacity:.6}
+  .jr-panel{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 10px}
+  .jr-panel select,.jr-panel input{font:inherit;font-size:13px;padding:7px 10px;border:1px solid #ddd;
+    border-radius:8px;background:#fff;color:inherit}
+  .jr-panel input{flex:1;min-width:180px}
+  .jr-panel button{font:inherit;font-size:13px;padding:7px 14px;border:none;border-radius:8px;
+    background:var(--accent);color:#fff;cursor:pointer}
+  .jr-panel button.jr-ghost{background:#eee;color:#555}
+  .jr-status{font-size:12.5px;color:var(--muted);margin-bottom:8px}
+  body.dark .jr-panel select,body.dark .jr-panel input{background:#242424;border-color:#3a3a3a}
+  body.dark .jr-panel button.jr-ghost{background:#333;color:#ccc}
+  .jr-card{position:relative;display:flex;flex-direction:column;gap:9px;padding:14px 16px 14px 19px;
+    border:1px solid #e8e8e8;border-radius:12px;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.04);
+    cursor:pointer;transition:box-shadow .15s,transform .15s;overflow:hidden}
+  .jr-card:hover{box-shadow:0 6px 18px rgba(0,0,0,.09);transform:translateY(-1px)}
+  .jr-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--pc,#bbb)}
+  .jr-card-title{font-size:14px;line-height:1.4;font-weight:600;word-break:break-word}
+  body.dark .jr-card{background:#1f1f1f;border-color:#333}
+  .jr-title{cursor:pointer;border-bottom:1px dashed #c9c4bc}
+  .jr-title:hover{color:var(--accent);border-color:var(--accent)}
+  #jr-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;
+    justify-content:center;z-index:120;padding:max(16px,env(safe-area-inset-left,0px))}
+  #jr-modal{background:#fff;border-radius:12px;max-width:520px;width:100%;padding:22px 24px;position:relative;
+    box-shadow:0 18px 50px rgba(0,0,0,.25)}
+  #jr-modal h3{margin:4px 0 10px;font-size:17px;line-height:1.35}
+  #jr-modal p{margin:0 0 14px;font-size:14px;line-height:1.6;color:#333}
+  .jr-m-date{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+  #jr-close{position:absolute;top:10px;right:12px;border:none;background:none;font-size:24px;
+    line-height:1;color:#999;cursor:pointer}
+  #jr-close:hover{color:#333}
+  body.dark #jr-modal{background:#1f1f1f}
+  body.dark #jr-modal p{color:#ddd}
+  body.dark .jr-title{border-color:#555}
+  .jr-day{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:18px 0 8px}
+  .jr-item{display:flex;gap:10px;padding:10px 0;border-bottom:1px solid #eee;font-size:14px;line-height:1.5}
+  .jr-item:last-child{border-bottom:none}
+  .jr-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);margin-top:7px;flex:0 0 auto}
+  .jr-body{min-width:0}
+  .jr-tags{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px}
+  .jr-tag{font-size:11px;background:#f0eeea;color:#666;border-radius:5px;padding:1px 7px;cursor:pointer}
+  .jr-tag.on{background:var(--accent);color:#fff}
+  body.dark .jr-item{border-color:#333}
+  body.dark .jr-tag{background:#2c2c2c;color:#bbb}
   .nav-section{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);padding:16px 12px 6px;font-weight:700;display:flex;align-items:center}
   #add-proj{margin-left:auto;background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1;padding:0 4px;border-radius:5px}
   #add-proj:hover{background:rgba(128,128,128,.18);color:var(--accent)}
@@ -370,6 +412,8 @@
     <div id="nav-fixed"></div>
     <div class="nav-section">Проекты<button id="add-proj" title="Новый проект">＋</button></div>
     <div id="nav-projects"></div>
+    <div class="nav-section">Журнал</div>
+    <div id="nav-journal"></div>
     <div class="nav-section">Метки</div>
     <div id="nav-labels"></div>
     <div id="theme-toggle"><span id="theme-ic">🌙</span><span id="theme-label">Тёмная тема</span></div>
@@ -389,6 +433,7 @@
       </div>
       <div id="refine" class="refine-bar"></div>
       <div id="list"></div>
+      <div id="journal" style="display:none"></div>
     </div>
   </main>
 </div>
@@ -850,6 +895,133 @@ function render(){
   renderMain();
 }
 function renderRefine(){document.getElementById('refine').innerHTML=''}
+
+// ---------- журнал СГЛА ----------
+// записи встроены в страницу, чтобы файл открывался и локально (file:// не даёт fetch);
+// по http подтягивается свежий journal-sgla.json, если он новее
+const JOURNAL_INLINE={"обновлено": "2026-10-29", "записи": [{"дата": "2026-10-29", "заголовок": "Собрал поисковую кампанию магистратуры 715600337", "текст": "21 группа, 238 ключей, 21 комбинаторное объявление, 895 минус-слов на кампанию, кросс-минусация по группам. Стратегия — оптимизация конверсий по нескольким целям, 100 000 ₽ в неделю. Отправлена на модерацию, показы выключены. Автотаргетинг остался на всех категориях, API его не правит — нужно сузить руками.", "теги": ["магистратура", "кампании", "запуск"]}, {"дата": "2026-10-29", "заголовок": "Собрал РСЯ магистратуры 715601094", "текст": "Одна группа, 100 самых частотных запросов без операторов. Два комбинаторных объявления, в каждом 5 заголовков и 5 картинок, тексты общие. Ссылка на /mag/consult. Стратегия и 9 целей как в РСЯ бакалавриата, 100 000 ₽ в неделю. На модерации.", "теги": ["магистратура", "кампании", "РСЯ", "запуск"]}, {"дата": "2026-10-29", "заголовок": "Разобрал семантику магистратуры", "текст": "Собрал 4832 фразы по маске «магистратура» на всю Россию. После чистки осталось 238 целевых в 21 группе на 878 тысяч показов — это 5% от собранного, остальное чужие вузы, не наши направления и информационка. Минус-лист 900 позиций, проверен на самострел. Таблица со всеми группами и фразами — в артефакте.", "теги": ["магистратура", "семантика", "минус-слова"]}, {"дата": "2026-10-29", "заголовок": "Написал объявления на все группы магистратуры", "текст": "109 заголовков на 22 группы, длина 22–55 символов. Убрал упоминания приёма, набора и зачисления — акцент на бесплатной консультации. Для юриспруденции и двух ИТ-программ отдельные тексты без госдиплома и отсрочки, там нет аккредитации. Быстрые ссылки и уточнения — общие на обе кампании.", "теги": ["магистратура", "объявления"]}, {"дата": "2026-10-29", "заголовок": "Перевёл 11 кампаний на оптимизацию конверсий", "текст": "Стратегия «оптимизация конверсий по нескольким целям» с сохранением бюджетов, во все проставлены те же 9 целей, что в РСЯ, включая коллтрекинг. Четыре ОЗК-кампании не трогал: там смена модели оплаты. Поймал грабли — стратегия по одной цели молча стирает список приоритетных целей.", "теги": ["аккаунт", "кампании", "стратегии", "цели"]}, {"дата": "2026-10-29", "заголовок": "Выписал 100 худших площадок РСЯ", "текст": "За 7 дней по аккаунту 10 710 площадок сетей, из них 1657 с расходом и нулём конверсий — слито 152 тысячи рублей. В сотню худших попало 75 808 ₽. Сервисы ВК, Яндекса и Mail.ru оставили нетронутыми, кроме video, games и dsp.", "теги": ["аккаунт", "площадки", "РСЯ"]}, {"дата": "2026-10-29", "заголовок": "Сделал акты и договор по самозанятости", "текст": "Договор № 392 от 09.01.2026 переоформлен на самозанятого, реквизиты академии подставлены, подпись вставлена. Десять актов на 926 500 ₽ со ссылками на счета и чеки, плюс реестр документов. По акту № 10 на 30 000 ₽ чека нет — проверить оплату.", "теги": ["документы"]}, {"дата": "2026-10-29", "заголовок": "Переподключил коннектор Битрикс24 в Метрике", "текст": "Коннектор не грузил данные с 27.10: CRM-статусы нулевые при живой форме «Спасибо». Полностью переподключили, маппинг 62 стадий проставлен заново. Первая загрузка подтянет сделки за 21 день, будет всплеск конверсий. Проверка назначена на 30.10 в 14:00.", "теги": ["интеграции", "метрика"]}]};
+let JOURNAL=JOURNAL_INLINE, jrTag=null, jrДата='', jrИИ=null, jrЗапрос='', jrСтатус='';
+async function loadJournal(){
+  try{
+    const r=await fetch('journal-sgla.json?'+Date.now());
+    const свежий=await r.json();
+    if(свежий && свежий.записи) JOURNAL=свежий;
+  }catch(e){ /* file:// — остаются встроенные */ }
+  return JOURNAL;
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-jrtag]');
+  if(t){
+    const знач=t.dataset.jrtag||null;
+    jrTag = (знач && jrTag===знач) ? null : знач;   // повторный клик снимает фильтр
+    renderJournal(); return;
+  }
+  if(e.target.id==='jr-find'){ искатьИИ(); return; }
+  if(e.target.id==='jr-reset'){ jrИИ=null; jrЗапрос=''; jrСтатус=''; renderJournal(); return; }
+  const o=e.target.closest('[data-jropen]');
+  if(o){ открытьЗапись(o.dataset.jropen); return; }
+  if(e.target.id==='jr-modal-bg'||e.target.id==='jr-close') закрытьЗапись();
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='jr-date'){ jrДата=e.target.value; renderJournal(); }
+});
+document.addEventListener('keydown',e=>{
+  if(e.target&&e.target.id==='jr-q'&&e.key==='Enter'){ jrЗапрос=e.target.value; искатьИИ(); }
+});
+// поиск по журналу: сначала по словам, если есть ключ ИИ — уточняем смыслом
+async function искатьИИ(){
+  const поле=document.getElementById('jr-q');
+  jrЗапрос=(поле&&поле.value||'').trim();
+  if(!jrЗапрос){ jrИИ=null; jrСтатус=''; renderJournal(); return; }
+  const зап=(JOURNAL.записи||[]);
+  const слова=jrЗапрос.toLowerCase().split(/\s+/).filter(w=>w.length>2);
+  const совпало=зап.filter(z=>{
+    const стог=((z.заголовок||'')+' '+(z.текст||'')+' '+(z.теги||[]).join(' ')).toLowerCase();
+    return слова.some(w=>стог.includes(w));
+  }).map(z=>z.заголовок);
+  if(!GEMINI_KEY){
+    jrИИ=совпало; jrСтатус=совпало.length?`нашлось по словам: ${совпало.length}`:'ничего не нашлось';
+    renderJournal(); return;
+  }
+  jrСтатус='ищу…'; renderJournal();
+  const список=зап.map((z,i)=>`${i}. ${z.заголовок} | теги: ${(z.теги||[]).join(', ')} | ${z.текст}`).join('\n');
+  const prompt=`Ниже журнал работ по клиенту. Пользователь вспоминает, что делал, своими словами.
+Верни ТОЛЬКО JSON-массив номеров подходящих записей, самые подходящие первыми, максимум 8.
+Если ничего не подходит — верни [].
+
+Запрос: ${jrЗапрос}
+
+Записи:
+${список}`;
+  try{
+    const r=await geminiGenerate({contents:[{role:'user',parts:[{text:prompt}]}]});
+    const txt=(r&&r.candidates&&r.candidates[0]&&r.candidates[0].content&&r.candidates[0].content.parts[0].text)||'[]';
+    const ном=JSON.parse((txt.match(/\[[\s\S]*?\]/)||['[]'])[0]);
+    const найдено=ном.map(n=>зап[n]).filter(Boolean).map(z=>z.заголовок);
+    jrИИ=найдено.length?найдено:совпало;
+    jrСтатус=найдено.length?`ИИ нашёл: ${найдено.length}`:(совпало.length?`ИИ не уверен, показываю по словам: ${совпало.length}`:'ничего не нашлось');
+  }catch(err){
+    jrИИ=совпало; jrСтатус='ИИ недоступен, искал по словам: '+совпало.length;
+  }
+  renderJournal();
+}
+function открытьЗапись(ключ){
+  const [дата,idx]=ключ.split('|');
+  const зап=(JOURNAL.записи||[]).filter(z=>z.дата===дата)
+    .filter(z=>!jrTag||(z.теги||[]).includes(jrTag))[+idx];
+  if(!зап)return;
+  const m=document.createElement('div'); m.id='jr-modal-bg';
+  m.innerHTML=`<div id="jr-modal"><button id="jr-close" aria-label="Закрыть">×</button>`+
+    `<div class="jr-m-date">${фДата(зап.дата)}</div>`+
+    `<h3>${esc(зап.заголовок||'')}</h3><p>${esc(зап.текст||'')}</p>`+
+    `<div class="jr-tags">`+(зап.теги||[]).map(t=>`<span class="jr-tag">${esc(t)}</span>`).join('')+`</div></div>`;
+  document.body.appendChild(m);
+}
+function закрытьЗапись(){ const m=document.getElementById('jr-modal-bg'); if(m)m.remove(); }
+document.addEventListener('keydown',e=>{ if(e.key==='Escape')закрытьЗапись(); });
+function renderJournal(){
+  const box=document.getElementById('journal');
+  const зап=(JOURNAL&&JOURNAL.записи)||[];
+  const теги=[...new Set(зап.flatMap(z=>z.теги||[]))].sort();
+  let видимые=jrTag?зап.filter(z=>(z.теги||[]).includes(jrTag)):зап;
+  if(jrДата) видимые=видимые.filter(z=>z.дата===jrДата);
+  if(jrИИ) видимые=видимые.filter(z=>jrИИ.includes(z.заголовок));
+  const поДням={};
+  видимые.forEach(function(z){ (поДням[z.дата] = поДням[z.дата] || []).push(z); });
+  const дни=Object.keys(поДням).sort().reverse();
+  const всеДаты=[...new Set(зап.map(z=>z.дата))].sort().reverse();
+  box.innerHTML=
+    `<div class="jr-panel">`+
+      `<select id="jr-date"><option value="">Все дни</option>`+
+      всеДаты.map(d=>`<option value="${d}" ${jrДата===d?'selected':''}>${фДата(d)}</option>`).join('')+
+      `</select>`+
+      `<input id="jr-q" placeholder="Что я делал? спросить ИИ…" value="${esc(jrЗапрос||'')}">`+
+      `<button id="jr-find">Найти</button>`+
+      (jrИИ?`<button id="jr-reset" class="jr-ghost">Сбросить</button>`:'')+
+    `</div>`+
+    (jrСтатус?`<div class="jr-status">${esc(jrСтатус)}</div>`:'')+
+    `<div class="jr-tags" style="margin-bottom:6px">`+
+    теги.map(t=>`<span class="jr-tag ${jrTag===t?'on':''}" data-jrtag="${esc(t)}">${esc(t)}</span>`).join('')+
+    (jrTag?`<span class="jr-tag" data-jrtag="">сбросить</span>`:'')+`</div>`+
+    (дни.length?дни.map(d=>
+      `<div class="jr-day">${фДата(d)}</div><div class="cards">`+
+      поДням[d].map((z,i)=>
+        `<div class="jr-card" data-jropen="${esc(z.дата)}|${i}" style="--pc:${цветТега((z.теги||[])[0])}">`+
+        `<div class="jr-card-title">${esc(z.заголовок||z.текст)}</div>`+
+        `<div class="jr-tags">`+(z.теги||[]).map(t=>`<span class="jr-tag ${jrTag===t?'on':''}" data-jrtag="${esc(t)}">${esc(t)}</span>`).join('')+`</div></div>`
+      ).join('')+`</div>`
+    ).join(''):'<div style="color:var(--muted);font-size:14px;padding:12px 0">записей пока нет</div>');
+}
+function цветТега(t){
+  if(!t)return '#bbb';
+  const П=['#4a58c8','#c8574a','#2f8f5b','#b8860b','#7a4ac8','#0f8ea8','#c84a9a','#5a7a2f'];
+  let h=0; for(const c of t) h=(h*31+c.charCodeAt(0))>>>0;
+  return П[h%П.length];
+}
+function фДата(d){
+  const М=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+  const [г,м,дн]=d.split('-'); return `${+дн} ${М[+м-1]} ${г}`;
+}
 function navItem(type,value,label,icon,dotColor,dropAttr,extra){
   const filtered=refine.project||refine.label;
   const active=type==='project'?refine.project===value:view.type===type&&!(type==='all'&&filtered)&&(type==='today'||(view.value||null)===(value||null));
@@ -909,6 +1081,8 @@ function renderNav(){
     navItem('today',null,'Сегодня','📅',null,`data-drop-date="${todayStr()}"`)+
     navItem('all',null,'Все задачи','📋')+
     navItem('done',null,'Выполненные','✅');
+  document.getElementById('nav-journal').innerHTML=
+    navItem('journal',null,'Журнал СГЛА','📒');
   document.getElementById('nav-projects').innerHTML=
     state.projects.map(p=>navItem('project',p,p,null,projColor(p),`data-drop-proj="${p}"`,
       p==='Входящие'?'':`<button class="proj-menu" data-projrename="${esc(p)}" title="Переименовать">✎</button><button class="proj-menu proj-del" data-projdel="${esc(p)}" title="Удалить проект">×</button>`)).join('');
@@ -917,6 +1091,17 @@ function renderNav(){
     labels.map(l=>`<div class="nav-item ${refine.label===l?'filter-on':''}" data-type="label" data-value="${l}"><span class="ic">@</span><span>${l}</span><button class="proj-menu proj-del" data-labeldel="${esc(l)}" title="Удалить метку">×</button></div>`).join('')||'<div style="font-size:12px;color:#aaa;padding:4px 12px">пока нет</div>';
 }
 function renderMain(){
+  // журнал — отдельный режим: прячем список задач и быстрый ввод
+  const этоЖурнал = view.type==='journal';
+  document.getElementById('journal').style.display = этоЖурнал?'block':'none';
+  document.getElementById('list').style.display = этоЖурнал?'none':'';
+  document.getElementById('quickadd').style.display = этоЖурнал?'none':'';
+  if(этоЖурнал){
+    document.getElementById('view-title').innerHTML='<span class="ic">📒</span> Журнал СГЛА';
+    document.getElementById('view-sub').textContent='Что делали по проекту, по дням';
+    loadJournal().then(renderJournal);
+    return;
+  }
   const meta=VIEW_META[view.type]||{t:view.value,ic:view.type==='label'?'@':'•'};
   let tasks=getViewTasks();
   // sort: chronological by date, then manual order within each day (drag to reorder)
